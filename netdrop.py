@@ -3,10 +3,14 @@ import ipaddress
 import subprocess
 import queue
 from threading import Thread
+import argparse
+from xml.etree.ElementTree import fromstring
 
-# Returns the IP of the machine
-def get_ip(verbose=False):
-    if verbose: print('[v] Getting the IP of the machine...', end='')
+
+# Returns the interface of the local network of the machine in CIDR format -> https://stackoverflow.com/questions/41420165/get-ipconfig-result-with-python-in-windows/41420850#41420850
+def get_iface(verbose=False):
+    # First, we get the IP of the host
+    if verbose: print('[v] Getting the IP of the machine')
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         err = s.connect(('192.255.255.255', 1)) # Does not even have to be reachable
@@ -14,16 +18,76 @@ def get_ip(verbose=False):
             ip = s.getsockname()[0]
             if verbose: print(' Got: ' + ip)
         else:
-            err = s.connect(('10.255.255.255', 1))
-            ip = s.getsockname()[0]
-            if verbose: print(' Got: ' + ip)
+            err = s.connect(('172.255.255.255', 1))
+            if not err:
+                ip = s.getsockname()[0]
+                if verbose: print(' Got: ' + ip)
+            else:
+                err = s.connect(('10.255.255.255', 1))
+                ip = s.getsockname()[0]
+                if verbose: print(' Got: ' + ip)
     except Exception:
         ip = '127.0.0.1'
     finally:
         s.close()
-        print('[*] IP: ' + str(ip))
+        print('[+] Host\'s IP: ' + str(ip))
     
-    return ip
+    # Second, we get the nics
+    cmd = 'wmic.exe nicconfig where "IPEnabled  = True" get ipaddress,MACAddress,IPSubnet,DNSHostName,Caption,DefaultIPGateway /format:rawxml'
+    xml_text = subprocess.check_output(cmd, creationflags=8)
+    xml_root = fromstring(xml_text)
+
+    nics = []
+    keyslookup = {
+        'DNSHostName' : 'hostname',
+        'IPAddress' : 'ip',
+        'IPSubnet' : '_mask',
+        'Caption' : 'hardware',
+        'MACAddress' : 'mac',
+        'DefaultIPGateway' : 'gateway',
+    }
+
+    for nic in xml_root.findall("./RESULTS/CIM/INSTANCE") :
+        # parse and store nic info
+        n = {
+            'hostname':'',
+            'ip':[],
+            '_mask':[],
+            'hardware':'',
+            'mac':'',
+            'gateway':[],
+        }
+        for prop in nic :
+            name = keyslookup[prop.attrib['NAME']]
+            if prop.tag == 'PROPERTY':
+                if len(prop):
+                    for v in prop:
+                        n[name] = v.text
+            elif prop.tag == 'PROPERTY.ARRAY':
+                for v in prop.findall("./VALUE.ARRAY/VALUE") :
+                    n[name].append(v.text)
+        nics.append(n)
+
+        # creates python ipaddress objects from ips and masks
+        for i in range(len(n['ip'])) :
+            arg = '%s/%s'%(n['ip'][i],n['_mask'][i])
+            if ':' in n['ip'][i] : n['ip'][i] = ipaddress.IPv6Interface(arg)
+            else : n['ip'][i] = ipaddress.IPv4Interface(arg)
+        del n['_mask']
+
+    # Third, we find the nic with the IP of the host and the netmask
+    for nic in nics:
+        if nic['ip'] != None:
+            for net in nic['ip']:
+                if str(net).split('/')[0] == str(ip):
+                    iface = net
+                    break
+    
+    # Fourth, we create an object to obtain interface information
+    ret = ipaddress.ip_interface(iface)
+    print('[+] Hosts network: ' + str(ret.network))
+    return ret
+
 
 # Creates a subprocess to ping the objective
 def ping(ip):
@@ -32,6 +96,7 @@ def ping(ip):
         return ip
     else:
         return None
+
 
 # Scans the local network and returns a list of the hosts alive
 def network_scanner_slow(ip, netmask, verbose=False): # 192.168.1.0, 24
@@ -43,7 +108,7 @@ def network_scanner_slow(ip, netmask, verbose=False): # 192.168.1.0, 24
     hosts = list(net_ip.hosts())
 
     # Start scanning the network for hosts alive
-    # SLOW WAY https://opentechguides.com/how-to/article/python/57/python-ping-subnet.html
+    # SLOW WAY -> https://opentechguides.com/how-to/article/python/57/python-ping-subnet.html
     # Configure subprocess to hide the console window
     info = subprocess.STARTUPINFO()
     info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -58,6 +123,7 @@ def network_scanner_slow(ip, netmask, verbose=False): # 192.168.1.0, 24
     
     return online_hosts
 
+
 # Scans the local network and returns a list of the hosts alive
 def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     # Create the network
@@ -67,7 +133,7 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     # Get all the hosts of the network
     hosts = list(net_ip.hosts())
 
-    # FAST WAY https://www.edureka.co/community/31966/how-to-get-the-return-value-from-a-thread-using-python
+    # FAST WAY -> https://www.edureka.co/community/31966/how-to-get-the-return-value-from-a-thread-using-python
     online_hosts = []
     threads = []
     que = queue.Queue()
@@ -86,23 +152,29 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     
     return online_hosts
 
+
 # Server and client functions https://stackoverflow.com/questions/44029765/python-socket-connection-between-windows-and-linux
 
-# To test if the functions work properly
-def test():
-    ip = '192.168.1.0'
-    netmask = '24'
-    print('[*] Calling network_scanner with: ' + ip + ', ' + netmask )
-    hosts = network_scanner_fast(ip, netmask)
-    print("[*] List of detected hosts: " + str(hosts))
 
 def main():
+    # Check the arguments with argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-f", "--file", required=False, help="Input file to share")
+    args = vars(ap.parse_args())
+    filename = args['file']
+    print(str(filename))
+
     print('[*] netdrop: Starting...')
-    # Check the arguments
+
+    # Get the network info
+    iface = get_iface()
+
     # Scan the network
+    hosts = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
+    print(str(hosts))
+
     # Open a server thread (receiving files)
     # Open a client thread (sending files)
-    test()
 
 if __name__ == "__main__":
     main()
