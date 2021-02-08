@@ -5,6 +5,24 @@ import queue
 from threading import Thread
 import argparse
 from xml.etree.ElementTree import fromstring
+import asyncio
+import websockets
+from multiprocessing import Process
+import signal
+from datetime import datetime
+
+
+# Global variables
+p_server = Process
+p_client = Process
+
+
+# Handles SIGINT signal
+def keyboardInterruptHandler(signal, frame):
+    print("KeyboardInterrupt (ID: {}) has been caught. Cleaning up...".format(signal))
+    p_server.join()
+    p_client.join()
+    exit(0)
 
 
 # Returns the interface of the local network of the machine in CIDR format -> https://stackoverflow.com/questions/41420165/get-ipconfig-result-with-python-in-windows/41420850#41420850
@@ -155,8 +173,49 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
 
 # Server and client functions https://stackoverflow.com/questions/44029765/python-socket-connection-between-windows-and-linux
 
+# Server loop
+async def server_loop(websocket, path):
+    buff = await websocket.recv()
+
+    # Write to file
+    filename = str(datetime.now().time()).split('.')[1] + str(int(str(datetime.now().time()).split('.')[1])+1) + '.file'
+    file = open(filename, "w+")
+    file.write(buff)
+    file.close()
+
+    print('[+] server_loop: Received a message. Wrote to ' + filename)
+    await websocket.send('server_loop: ACK')
+    print('[+] server_loop: Sent ACK')
+
+
+# Server
+def server(ip):
+    start_server = websockets.serve(server_loop, ip, 8765)
+
+    asyncio.get_event_loop().run_until_complete(start_server)
+    asyncio.get_event_loop().run_forever()
+
+
+# Client loop
+async def client_loop(ip):
+    uri = "ws://"+ip+":8765"
+    async with websockets.connect(uri) as websocket:
+        buff = 'Buffer'
+        await websocket.send(buff)
+        print('[+] client_loop: Sent a message to ' + ip)
+        greeting = await websocket.recv()
+        print('[+] client_loop: Received ACK')
+
+
+# Client
+def client(ip):
+    asyncio.get_event_loop().run_until_complete(client_loop(ip))
+
 
 def main():
+    # Register the SIGINT handler
+    signal.signal(signal.SIGINT, keyboardInterruptHandler)
+
     # Check the arguments with argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("-f", "--file", required=False, help="Input file to share")
@@ -164,6 +223,7 @@ def main():
     filename = args['file']
     print(str(filename))
 
+    # If args are good, start working
     print('[*] netdrop: Starting...')
 
     # Get the network info
@@ -174,7 +234,16 @@ def main():
     print(str(hosts))
 
     # Open a server thread (receiving files)
+    global p_server
+    p_server = Process(target=server, args=(str(iface.ip),))
+    p_server.start()
+
     # Open a client thread (sending files)
+    objective = input("[*] Enter the IP of the end machine: ")
+    global p_client
+    p_client = Process(target=client, args=(str(objective),))
+    p_client.start()
+
 
 if __name__ == "__main__":
     main()
