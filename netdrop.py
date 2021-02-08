@@ -86,6 +86,8 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     
     return online_hosts
 
+# Server and client functions https://stackoverflow.com/questions/44029765/python-socket-connection-between-windows-and-linux
+
 # To test if the functions work properly
 def test():
     ip = '192.168.1.0'
@@ -100,6 +102,7 @@ def main():
     # Scan the network
     # Open a server thread (receiving files)
     # Open a client thread (sending files)
+    test()
 
 if __name__ == "__main__":
     main()
