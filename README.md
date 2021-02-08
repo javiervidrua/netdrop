@@ -1,2 +1,2 @@
 # netdrop
-Like AirDrop, but works on everything that runs Python.
+Like AirDrop, but this runs on Python.
