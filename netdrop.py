@@ -6,7 +6,7 @@ from threading import Thread
 import argparse
 from xml.etree.ElementTree import fromstring
 import asyncio
-import websockets
+import websockets # https://websockets.readthedocs.io/en/stable/intro.html#installation
 from multiprocessing import Process
 import signal
 from datetime import datetime
@@ -25,9 +25,11 @@ def keyboardInterruptHandler(signal, frame):
     exit(0)
 
 
-# Returns the interface of the local network of the machine in CIDR format -> https://stackoverflow.com/questions/41420165/get-ipconfig-result-with-python-in-windows/41420850#41420850
+# https://docs.python.org/3/library/ipaddress.html
+# https://docs.python.org/3/howto/sockets.html
+# Returns the interface of the local network of the machine in CIDR format (e.g 192.168.1.70/24)
 def get_iface(verbose=False):
-    # First, we get the IP of the host
+    # First, we get the IP of the host -> https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib
     if verbose: print('[v] Getting the IP of the machine')
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -50,7 +52,7 @@ def get_iface(verbose=False):
         s.close()
         print('[+] Host\'s IP: ' + str(ip))
     
-    # Second, we get the nics
+    # Second, we get the nics -> https://stackoverflow.com/questions/41420165/get-ipconfig-result-with-python-in-windows/41420850#41420850
     cmd = 'wmic.exe nicconfig where "IPEnabled  = True" get ipaddress,MACAddress,IPSubnet,DNSHostName,Caption,DefaultIPGateway /format:rawxml'
     xml_text = subprocess.check_output(cmd, creationflags=8)
     xml_root = fromstring(xml_text)
@@ -172,6 +174,7 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
 
 
 # Server and client functions https://stackoverflow.com/questions/44029765/python-socket-connection-between-windows-and-linux
+
 
 # Server loop
 async def server_loop(websocket, path):
