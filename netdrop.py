@@ -10,6 +10,8 @@ import websockets # https://websockets.readthedocs.io/en/stable/intro.html#insta
 from multiprocessing import Process
 import signal
 from datetime import datetime
+import time
+import os
 
 
 # Global variables
@@ -185,12 +187,12 @@ async def server_loop(websocket, path):
     file = open(filename, "wb+")
 
     # Send NACK
-    print('[+] server_loop: Filename received, sending NACK')
+    print('[+] server_loop: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]) + ', sending NACK')
     buff = 'NACK'
     await websocket.send(buff)
 
     # Listen for the file and the FACK
-    print('[+] server_loop: Waiting for the file')
+    print('[+] server_loop: Waiting for the file and the FACK')
     buff = await websocket.recv()
     while buff != 'FACK':
         file.write(buff)
@@ -224,7 +226,12 @@ async def client_loop(ip, filename):
         # Listen for the NACK
         print('[+] client_loop: Waiting for the NACK')
         buff = await websocket.recv()
-        assert buff == 'NACK'
+        try:
+            assert buff == 'NACK'
+        except AssertionError:
+            print('[-] client_loop: The server did not accept the file share, quitting...')
+            exit(1)
+
 
         # Send the file
         print('[+] client_loop: Sending the file')
@@ -257,7 +264,9 @@ def main():
     ap.add_argument("-f", "--file", required=False, help="Input file to share")
     args = vars(ap.parse_args())
     filename = args['file']
-    print(str(filename))
+
+    # Check if the file exists only if we are client
+#    if filename != None and False == os.path.isfile(filename):
 
     # If args are good, start working
     print('[*] netdrop: Starting...')
@@ -267,7 +276,7 @@ def main():
 
     # Scan the network
     hosts = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
-    print(str(hosts))
+    print('[+] netdrop: Hosts found on the local network: ' + str(hosts))
 
     # Open a server thread (receiving files)
     global p_server
