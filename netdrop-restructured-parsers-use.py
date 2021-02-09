@@ -14,30 +14,44 @@ import time
 import os
 
 
-# Global variables
-is_client = False # True = client, False = Server
-
-
 # Handles SIGINT signal
-def keyboard_interrupt_handler(signal, frame):
+def keyboardInterruptHandler(signal, frame):
     print("KeyboardInterrupt (ID: {}) has been caught. Cleaning up...".format(signal))
     exit(0)
 
 
 def main():
     # Register the signal handlers
-    signal.signal(signal.SIGINT, keyboard_interrupt_handler)
-        
+    signal.signal(signal.SIGINT, keyboardInterruptHandler)
+    
+    parser = argparse.ArgumentParser(prog='netdrop')
+    parser.add_argument('--foo', action='store_true', help='foo help')
+    subparsers = parser.add_subparsers('Help for subcomands')
+
+    parser_client = subparsers.add_parser('client', help='Client mode')
+    parser_client.add_argument('-f', '--file', required=True, help='Input file to share')
+
+    parser_server = subparsers.add_parser('server', help='Server mode')
+
+
+
     # Check the arguments
-    my_description="""By default works in server mode, for client mode use -f argument""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
-    parser = argparse.ArgumentParser(prog='netdrop', description=my_description)
-    parser.add_argument("-f", "--file", required=False, help="Client mode: Input file to share")
-    args = vars(parser.parse_args())
+    ap = argparse.ArgumentParser()
+    # Server or client, but not both at the same time
+    exclusive_group = ap.add_mutually_exclusive_group()
+    exclusive_group.add_argument("server", help='Server mode', nargs='?')
+    exclusive_group.add_argument("client", help='Client mode', nargs='?')
+    subparsers = exclusive_group.ad
+    ap.add_argument("-f", "--file", required=False, help="Input file to share")
+
+    args = vars(ap.parse_args())
+
     filename = args['file']
 
+    print(args['file'])
+    print(args['server'])
+
     # Check if client or server
-    if filename != None:
-        is_client = True
         # Client
             # Check if file exists and is readable
             # Scan the network
