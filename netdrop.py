@@ -178,17 +178,30 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
 
 # Server loop
 async def server_loop(websocket, path):
+    # Listen for the name of the file
+    print('[+] server_loop: Waiting for the filename')
     buff = await websocket.recv()
+    filename = str(datetime.now().time()).split('.')[1] + str(buff)
+    file = open(filename, "wb+")
 
-    # Write to file
-    filename = str(datetime.now().time()).split('.')[1] + str(int(str(datetime.now().time()).split('.')[1])+1) + '.file'
-    file = open(filename, "w+")
-    file.write(buff)
+    # Send NACK
+    print('[+] server_loop: Filename received, sending NACK')
+    buff = 'NACK'
+    await websocket.send(buff)
+
+    # Listen for the file and the FACK
+    print('[+] server_loop: Waiting for the file')
+    buff = await websocket.recv()
+    while buff != 'FACK':
+        file.write(buff)
+        buff = await websocket.recv()
+
     file.close()
 
-    print('[+] server_loop: Received a message. Wrote to ' + filename)
-    await websocket.send('server_loop: ACK')
-    print('[+] server_loop: Sent ACK')
+    # Send EOT
+    print('[+] server_loop: File received, FACK received, sending EOT')
+    buff = 'EOT'
+    await websocket.send(buff)
 
 
 # Server
@@ -200,19 +213,39 @@ def server(ip):
 
 
 # Client loop
-async def client_loop(ip):
+async def client_loop(ip, filename):
     uri = "ws://"+ip+":8765"
     async with websockets.connect(uri) as websocket:
-        buff = 'Buffer'
+        # Send the name of the file
+        print('[+] client_loop: Sending the filename')
+        buff = str(filename)
         await websocket.send(buff)
-        print('[+] client_loop: Sent a message to ' + ip)
-        greeting = await websocket.recv()
-        print('[+] client_loop: Received ACK')
+
+        # Listen for the NACK
+        print('[+] client_loop: Waiting for the NACK')
+        buff = await websocket.recv()
+        assert buff == 'NACK'
+
+        # Send the file
+        print('[+] client_loop: Sending the file')
+        with open(filename,'rb') as file:
+            for line in file:
+                await websocket.send(line)
+
+        # Send the FACK
+        print('[+] client_loop: Sending the FACK')
+        buff = 'FACK'
+        await websocket.send(buff)
+
+        # Listen for the EOT
+        buff = await websocket.recv()
+        assert buff == 'EOT'
+        print('[+] client_loop: Received EOT')
 
 
 # Client
-def client(ip):
-    asyncio.get_event_loop().run_until_complete(client_loop(ip))
+def client(ip, filename):
+    asyncio.get_event_loop().run_until_complete(client_loop(ip, filename))
 
 
 def main():
@@ -244,7 +277,7 @@ def main():
     # Open a client thread (sending files)
     objective = input("[*] Enter the IP of the end machine: ")
     global p_client
-    p_client = Process(target=client, args=(str(objective),))
+    p_client = Process(target=client, args=(str(objective), str(filename),))
     p_client.start()
 
 
