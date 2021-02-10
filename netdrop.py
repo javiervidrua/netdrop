@@ -219,7 +219,7 @@ async def file_download(websocket, path):
     # Listen for the name of the file
     print('[+] file_download: Waiting for the filename')
     buff = await websocket.recv()
-    filename = str(datetime.now().time()).split('.')[1] + str(buff)    
+    filename = str(datetime.now().time()).split('.')[1] + '-' + str(buff)    
 
     # Ask the user for consentment
     print('[+] file_download: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
@@ -248,14 +248,16 @@ async def file_download(websocket, path):
         await websocket.send(buff)
         print('[+] file_download: EOT sent')
 
+
 def main():
     # Register the signal handlers
     signal.signal(signal.SIGINT, keyboard_interrupt_handler)
         
     # Check the arguments
-    my_description="""By default works in server mode, for client mode use -f argument""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
-    parser = argparse.ArgumentParser(prog='netdrop', description=my_description)
-    parser.add_argument("-f", "--file", nargs='+', type=str, required=False, help="Client mode: Input file to share")
+    my_description="""By default works in server mode, for client mode use -f or --file""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
+    parser = argparse.ArgumentParser(prog='netdrop', description=my_description, conflict_handler='resolve')
+    parser.add_argument("-f", "--file", nargs='+', type=str, required=False, help="Client mode: Multiple input files to share")
+    parser.add_argument('--file', type=str, required=False, help="Client mode: Input file to share")
     args = parser.parse_args()
     files = args.file
 
@@ -305,6 +307,7 @@ def main():
         asyncio.get_event_loop().run_forever()
 
     return 0
+
 
 if __name__ == "__main__":
     main()
