@@ -13,16 +13,24 @@ from datetime import datetime
 import time
 import os
 import re
+import sys
+import random
 
 
 # Global variables
 is_client = False # True = client, False = Server
+threads = []
 
 
 # Handles SIGINT signal
 def keyboard_interrupt_handler(signal, frame):
     print("\n[*] KeyboardInterrupt (ID: {}) has been caught. Cleaning up...".format(signal))
-    exit(9)
+    for t in threads:
+        try:
+            t.join()
+        except:
+            break
+    sys.exit(9)
 
 
 # https://docs.python.org/3/library/ipaddress.html
@@ -155,7 +163,6 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
 
     # FAST WAY -> https://www.edureka.co/community/31966/how-to-get-the-return-value-from-a-thread-using-python
     online_hosts = []
-    threads = []
     que = queue.Queue()
     for i in range(len(hosts)):
         t = Thread(target= lambda q, arg1: q.put(ping(arg1)), args=(que, str(hosts[i])))
@@ -170,12 +177,38 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
         if result != None:
             online_hosts.append(result)
     
-    return online_hosts
+    # Check the hosts that are running the service
+    servers_available = []
+    for host in online_hosts:
+        if asyncio.run(timeout(host)) == True:
+            servers_available.append(host)
+    
+    return servers_available
 
 
 # Handles a file send
 def client(server, f):
     asyncio.get_event_loop().run_until_complete(file_send(server, f))
+
+
+# Timeout for discovering servers
+async def timeout(server):
+    try:
+        await asyncio.wait_for(discover_server(server), timeout=0.5)
+    except asyncio.TimeoutError:
+        ret = False
+    else:
+        ret = True
+    finally:
+        return ret # Stop the propagation of the Exception in case it occurs
+
+
+# Discovers servers
+async def discover_server(server):
+    uri = "ws://"+server+":8765"
+    async with websockets.connect(uri) as websocket:
+        print('[+] discover_server: Sending DISCOVER to ' + str(server))
+        await websocket.send('DISCOVER')
 
 
 # Sends a file to a server
@@ -194,11 +227,17 @@ async def file_send(server, f):
         except AssertionError:
             print('[-] file_send: The server did not accept the file share, quitting...')
             exit(11)
-        # Send the file
+        # Send the file (get the size and the starting time)
+        size = round((os.path.getsize(f)/1024)/1024, 4)
+        print('[+] send_file: File size is ' + str(size) + ' MB')
+        start = time.time()
         print('[+] file_send: Sending the file ' + str(f))
         with open(f,'rb') as file:
             for line in file:
                 await websocket.send(line)
+        end = time.time()
+        print('[*] file_send: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
+        print('[*] file_send: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
         # Send the FACK
         print('[+] file_send: Sending the FACK and waiting for the EOT')
         buff = 'FACK'
@@ -216,37 +255,46 @@ async def file_send(server, f):
 # Handles a file download
 async def file_download(websocket, path):
     # Wait for a connection
-    # Listen for the name of the file
-    print('[+] file_download: Waiting for the filename')
+    print('[+] file_download: Listening...')
+
     buff = await websocket.recv()
-    filename = str(datetime.now().time()).split('.')[1] + '-' + str(buff)    
+    if buff != 'DISCOVER':
+        filename = str(random.randint(00,99)) + '-' + str(buff)
 
-    # Ask the user for consentment
-    print('[+] file_download: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
-    if 'yes' != input('[+] file_download: To allow the file transfer enter "yes": '):
-        # Send EOT and quit
-        print('[+] file_download: Sending EOT to end the file transfer')
-        buff = 'EOT'
-        await websocket.send(buff)
-    else:
-        # Receive the file
-        print('[+] file_download: Sending NACK to start the file transfer')
-        buff = 'NACK'
-        await websocket.send(buff)
+        # Ask the user for consentment
+        print('[+] file_download: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
+        if 'yes' != input('[*] file_download: To allow the file transfer enter "yes": '):
+            # Send EOT and quit
+            print('[+] file_download: Sending EOT to end the file transfer')
+            buff = 'EOT'
+            await websocket.send(buff)
+        else:
+            # Receive the file
+            print('[+] file_download: Sending NACK to start the file transfer')
+            buff = 'NACK'
+            await websocket.send(buff)
 
-        # Listen for the file and the FACK
-        print('[+] file_download: Waiting for the file and the FACK')
-        with open(filename, "wb+") as file:
-            buff = await websocket.recv()
-            while buff != 'FACK':
-                file.write(buff)
+            # Listen for the file and the FACK
+            print('[+] file_download: Waiting for the file and the FACK')
+            with open(filename, "wb+") as file:
                 buff = await websocket.recv()
-        
-        # Sending the EOT
-        print('[+] file_download: File received, FACK received, sending EOT')
-        buff = 'EOT'
-        await websocket.send(buff)
-        print('[+] file_download: EOT sent')
+                start = time.time()
+                print('[+] file_download: File transmission has started')
+                while buff != 'FACK':
+                    file.write(buff)                
+                    buff = await websocket.recv()
+            end = time.time()
+            size = round((os.path.getsize(filename)/1024)/1024, 4)
+            print('[*] file_download: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
+            print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
+            
+            # Sending the EOT
+            print('[+] file_download: File received, FACK received, sending EOT')
+            buff = 'EOT'
+            await websocket.send(buff)
+            print('[+] file_download: EOT sent')
+    else:
+        print('[+] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
 
 
 def main():
@@ -289,6 +337,7 @@ def main():
             p = Process(target=client, args=(str(server), str(file),))
             processes.append(p)
             p.start()
+        print('[*] netdrop: All file_send() processes have been started')
         # Wait for the processes to finish
         for p in processes:
             try:
