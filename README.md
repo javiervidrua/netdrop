@@ -35,6 +35,11 @@ Looks for active hosts in the subnet that have the service up and running.
 
 The user selects the desired server and starts the file transmission.
 
+## TODO
+
+* Add name discovery feature
+* Add encryption (SSL)
+
 ## License
 
 MIT License
