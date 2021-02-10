@@ -1,3 +1,27 @@
+'''
+MIT License
+
+Copyright (c) 2021 Javier Vidal Ruano
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+'''
+
 import socket
 import ipaddress
 import subprocess
@@ -31,6 +55,40 @@ def keyboard_interrupt_handler(signal, frame):
         except:
             break
     sys.exit(9)
+
+
+# Returns a clean string
+def clean_string(incoming_string):
+    new_string = incoming_string
+    new_string = new_string.replace("!","")
+    new_string = new_string.replace("@","")
+    new_string = new_string.replace("#","")
+    new_string = new_string.replace("$","")
+    new_string = new_string.replace("%","")
+    new_string = new_string.replace("^","")
+    new_string = new_string.replace("&","and")
+    new_string = new_string.replace("*","")
+    new_string = new_string.replace("(","")
+    new_string = new_string.replace(")","")
+    new_string = new_string.replace("+","")
+    new_string = new_string.replace("=","")
+    new_string = new_string.replace("?","")
+    new_string = new_string.replace("\'","")
+    new_string = new_string.replace("\"","")
+    new_string = new_string.replace("{","")
+    new_string = new_string.replace("}","")
+    new_string = new_string.replace("[","")
+    new_string = new_string.replace("]","")
+    new_string = new_string.replace("<","")
+    new_string = new_string.replace(">","")
+    new_string = new_string.replace("~","")
+    new_string = new_string.replace("`","")
+    new_string = new_string.replace(":","")
+    new_string = new_string.replace(";","")
+    new_string = new_string.replace("|","")
+    new_string = new_string.replace("\\","")
+    new_string = new_string.replace("/","")        
+    return new_string
 
 
 # https://docs.python.org/3/library/ipaddress.html
@@ -180,6 +238,7 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     # Check the hosts that are running the service
     servers_available = []
     for host in online_hosts:
+        print('[+] network_scanner_fast: Checking the host ' + host)
         if asyncio.run(timeout(host)) == True:
             servers_available.append(host)
     
@@ -194,7 +253,7 @@ def client(server, f):
 # Timeout for discovering servers
 async def timeout(server):
     try:
-        await asyncio.wait_for(discover_server(server), timeout=0.5)
+        await asyncio.wait_for(discover_server(server), timeout=0.25) # 0.25 seconds for the server to recv the send
     except asyncio.TimeoutError:
         ret = False
     else:
@@ -259,7 +318,16 @@ async def file_download(websocket, path):
 
     buff = await websocket.recv()
     if buff != 'DISCOVER':
-        filename = str(random.randint(00,99)) + '-' + str(buff)
+        filename = clean_string(str(buff))
+        directory = os.path.join('.', 'netdrop-downloads')
+        # Create the downloads directory if unexistent
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+        # Check if file exists
+        while os.path.isfile(os.path.join(directory, filename)): # While the filename already exists, generate a new one
+            filename = str(random.randint(0,9)) + filename
+        # Create the new filename inside the downloads directory
+        write_file = os.path.join(directory, filename)
 
         # Ask the user for consentment
         print('[+] file_download: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
@@ -276,7 +344,7 @@ async def file_download(websocket, path):
 
             # Listen for the file and the FACK
             print('[+] file_download: Waiting for the file and the FACK')
-            with open(filename, "wb+") as file:
+            with open(write_file, "wb+") as file:
                 buff = await websocket.recv()
                 start = time.time()
                 print('[+] file_download: File transmission has started')
@@ -284,7 +352,7 @@ async def file_download(websocket, path):
                     file.write(buff)                
                     buff = await websocket.recv()
             end = time.time()
-            size = round((os.path.getsize(filename)/1024)/1024, 4)
+            size = round((os.path.getsize(write_file)/1024)/1024, 4)
             print('[*] file_download: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
             print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
             
@@ -326,9 +394,8 @@ def main():
         hosts = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
         print('[+] netdrop: Hosts found on the local network: ' + str(hosts))
         # Ask for a server (receiver of the file)
-        server = ''
-        myregex = "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-        regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
+        server = ''        
+        regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$" # my_regex = "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
         while not re.match(regex, server):
             server = input("[*] Enter the IP of the end machine: ")
         # Create processes to send each file to the selected server
