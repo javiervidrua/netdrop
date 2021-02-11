@@ -366,9 +366,13 @@ async def file_download(websocket, path):
                     file.write(buff)
                     buff = await websocket.recv()
                 end = time.time()
-            size = round((os.path.getsize(write_file)/1024)/1024, 4)
-            print('[*] file_download: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
-            print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
+            try:
+                size = round((os.path.getsize(write_file)/1024)/1024, 4)
+                print('[*] file_download: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
+                print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
+            except Exception as e:
+                print('[-] file_download: Error while calculating time and speed of transmission')
+                exit(13)
             
             # Sending the EOT
             if verbose: print('[v] file_download: File received, FACK received, sending EOT')
@@ -440,8 +444,8 @@ def main():
         # Server
         is_client = False
         # Start the server
-        start_server = websockets.serve(file_download, str(iface.ip), 8765)
         try:
+            start_server = websockets.serve(file_download, str(iface.ip), 8765)
             asyncio.get_event_loop().run_until_complete(start_server)
             asyncio.get_event_loop().run_forever()
         except Exception as e:
