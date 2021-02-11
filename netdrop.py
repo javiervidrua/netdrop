@@ -54,7 +54,7 @@ def keyboard_interrupt_handler(signal, frame):
         try:
             t.join()
         except:
-            break
+            sys.exit(8)
     sys.exit(9)
 
 
@@ -93,7 +93,7 @@ def clean_string(incoming_string):
     new_string = new_string.replace(";","")
     new_string = new_string.replace("|","")
     new_string = new_string.replace("\\","")
-    new_string = new_string.replace("/","")        
+    new_string = new_string.replace("/","")
     return new_string
 
 
@@ -232,7 +232,7 @@ def network_scanner_fast(ip, netmask): # 192.168.1.0, 24
         t = Thread(target= lambda q, arg1: q.put(ping(arg1)), args=(que, str(hosts[i])))
         threads.append(t)
         t.start()
-    
+
     for t in threads:
         t.join()
     
@@ -328,7 +328,6 @@ async def file_send(server, f):
 # Handles a file download
 async def file_download(websocket, path):
     # Wait for a connection
-    print('[+] file_download: Listening...')
 
     buff = await websocket.recv()
     if buff != 'DISCOVER':
@@ -344,7 +343,7 @@ async def file_download(websocket, path):
         write_file = os.path.join(directory, filename)
 
         # Ask the user for consentment
-        print('[+] file_download: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
+        print('[+] file_download: Received file "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
         if 'yes' != input('[*] file_download: To allow the file transfer enter "yes": '):
             # Send EOT and quit
             if verbose: print('[v] file_download: Sending EOT to end the file transfer')
@@ -360,7 +359,7 @@ async def file_download(websocket, path):
             if verbose: print('[v] file_download: Waiting for the file and the FACK')
             with open(write_file, "wb+") as file:
                 buff = await websocket.recv()
-                print('[+] file_download: File transmission has started')
+                print('[+] file_download: The file transmission has started')
                 start = time.time()
                 while buff != 'FACK':
                     file.write(buff)
@@ -380,7 +379,7 @@ async def file_download(websocket, path):
             await websocket.send(buff)
             if verbose: print('[v] file_download: EOT sent')
             await websocket.wait_closed()
-            print('[+] file_download: The connection was closed by the client')
+            print('[+] file_download: Done')
     else:
         if verbose: print('[v] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
 
@@ -392,11 +391,10 @@ def main():
     # Check the arguments
     my_description="""By default works in server mode, for client mode use -f or --file arguments""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
     parser = argparse.ArgumentParser(prog='netdrop', description=my_description, conflict_handler='resolve')
-    parser.add_argument("-f", "--file", nargs='+', type=str, required=False, help="client mode: Multiple input files to share")
-    parser.add_argument('--file', type=str, required=False, help="client mode: Input file to share")
+    parser.add_argument("-f", "--file", type=str, required=False, help="client mode: Input file to share")
     parser.add_argument('-v','--verbose', action='store_true', default=False, dest='verbose_input', required=False, help="verbose mode: Output more info") # If present, sets verbose_input to True
     args = parser.parse_args()
-    files = args.file
+    file = args.file
     # Set the verbosity
     global verbose
     verbose = args.verbose_input
@@ -405,36 +403,39 @@ def main():
     iface = get_iface()
 
     # Check if client or server
-    if files:        
+    if file:
         # Client
         is_client = True
         # Check if the files exists and are readable
-        for file in files:
-            is_file_readable = os.path.isfile(file)
-            if is_file_readable == False:
-                print('[-] netdrop: The input file ' + file + ' is not readable, quitting...')
-                exit(1)        
+        is_file_readable = os.path.isfile(file)
+        if is_file_readable == False:
+            print('[-] netdrop: The input file ' + file + ' is not readable, quitting...')
+            exit(1)        
         # Scan the network
-        servers = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
+        try:
+            servers = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
+        except Exception as e:
+            if hasattr(e, 'message'):
+                print('[-] netdrop: Exception caugth while scanning the network: ' + str(e.message))
+            else:
+                print('[-] netdrop: Exception caugth while scanning the network ' + str(e))
+            sys.exit(7)
         print('[+] netdrop: Servers found on the local network: ' + str(servers))
         # Ask for a server (receiver of the file)
         server = ''        
         regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$" # my_regex = "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
         while not re.match(regex, server):
             server = input("[*] Enter the IP of the end machine: ")
-        # Create processes to send each file to the selected server
-        processes = []
-        for file in files:
-            p = Process(target=client, args=(str(server), str(file),))
-            processes.append(p)
-            p.start()
-        for p in processes:
-            p.join()
-        if verbose: print('[v] netdrop: All files have been sent')   
+        # Create a process to send the file
+        p = Process(target=client, args=(str(server), str(file),))
+        p.start()
+        p.join()
+        if verbose: print('[v] netdrop: File sent')
     else:
         # Server
         is_client = False
         # Start the server
+        print('[+] netdrop: Listening...')
         try:
             start_server = websockets.serve(file_download, str(iface.ip), 8765)
             asyncio.get_event_loop().run_until_complete(start_server)
@@ -443,7 +444,7 @@ def main():
             if hasattr(e, 'message'):
                 print('[-] netdrop: Error downloading the file in file_download: ' + str(e.message))
             else:
-                print('[-] netdrop: Error downloading the file in file_download: ' + str(e))    
+                print('[-] netdrop: Error downloading the file in file_download: ' + str(e))
 
     return 0
 
