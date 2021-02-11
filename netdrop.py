@@ -42,6 +42,7 @@ import random
 
 
 # Global variables
+verbose = False
 is_client = False # True = client, False = Server
 threads = []
 
@@ -99,7 +100,7 @@ def clean_string(incoming_string):
 # https://docs.python.org/3/library/ipaddress.html
 # https://docs.python.org/3/howto/sockets.html
 # Returns the interface of the local network of the machine in CIDR format (e.g 192.168.1.70/24)
-def get_iface(verbose=False):
+def get_iface():
     # First, we get the IP of the host -> https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib
     if verbose: print('[v] get_iface: Getting the IP of the machine')
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -107,16 +108,16 @@ def get_iface(verbose=False):
         err = s.connect(('192.255.255.255', 1)) # Does not even have to be reachable
         if not err:
             ip = s.getsockname()[0]
-            if verbose: print(' Got: ' + ip)
+            if verbose: print('[v] get_iface: Got: ' + ip)
         else:
             err = s.connect(('172.255.255.255', 1))
             if not err:
                 ip = s.getsockname()[0]
-                if verbose: print(' Got: ' + ip)
+                if verbose: print('[v] get_iface: Got: ' + ip)
             else:
                 err = s.connect(('10.255.255.255', 1))
                 ip = s.getsockname()[0]
-                if verbose: print(' Got: ' + ip)
+                if verbose: print('[v] get_iface: Got: ' + ip)
     except Exception:
         ip = '127.0.0.1'
     finally:
@@ -190,10 +191,10 @@ def ping(ip):
 
 
 # Scans the local network and returns a list of the hosts alive
-def network_scanner_slow(ip, netmask, verbose=False): # 192.168.1.0, 24
+def network_scanner_slow(ip, netmask): # 192.168.1.0, 24
     # Create the network
     net_ip = ipaddress.ip_network(str(str(ip) + '/' + str(netmask)))
-    if verbose: print('[*] Scanning ' + str(net_ip) + '...')
+    if verbose: print('[v] Scanning ' + str(net_ip) + '...')
 
     # Get all the hosts of the network
     hosts = list(net_ip.hosts())
@@ -216,10 +217,10 @@ def network_scanner_slow(ip, netmask, verbose=False): # 192.168.1.0, 24
 
 
 # Scans the local network and returns a list of the hosts alive
-def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
+def network_scanner_fast(ip, netmask): # 192.168.1.0, 24
     # Create the network
     net_ip = ipaddress.ip_network(str(str(ip) + '/' + str(netmask)))
-    if verbose: print('[*] Scanning ' + str(net_ip) + '...')
+    if verbose: print('[v] Scanning ' + str(net_ip) + '...')
 
     # Get all the hosts of the network
     hosts = list(net_ip.hosts())
@@ -243,7 +244,7 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     # Check the hosts that are running the service
     servers_available = []
     for host in online_hosts:
-        print('[+] network_scanner_fast: Checking the host ' + host)
+        if verbose: print('[v] network_scanner_fast: Checking the host ' + host)
         if asyncio.run(timeout(host)) == True:
             servers_available.append(host)
     
@@ -267,7 +268,7 @@ async def timeout(server):
 async def discover_server(server):
     uri = "ws://"+server+":8765"
     async with websockets.connect(uri) as websocket:
-        print('[+] discover_server: Sending DISCOVER to ' + str(server))
+        if verbose: print('[v] discover_server: Sending DISCOVER to ' + str(server))
         await websocket.send('DISCOVER')
 
 
@@ -287,11 +288,12 @@ async def file_send(server, f):
     uri = "ws://"+server+":8765"
     async with websockets.connect(uri) as websocket:
         # Send the name of the file
-        print('[+] file_send: Sending the filename')
+        if verbose: print('[v] file_send: Sending the filename')
         buff = str(f)
         await websocket.send(buff)
         # Listen for the NACK
-        print('[+] file_send: Waiting for the NACK')
+        if verbose: print('[v] file_send: Waiting for the NACK')
+        print('[+] file_send: Waiting for the server to accept the transmission')
         buff = await websocket.recv()
         try:
             assert buff == 'NACK'
@@ -310,14 +312,14 @@ async def file_send(server, f):
         print('[*] file_send: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
         print('[*] file_send: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
         # Send the FACK
-        print('[+] file_send: Sending the FACK and waiting for the EOT')
+        if verbose: print('[v] file_send: Sending the FACK and waiting for the EOT')
         buff = 'FACK'
         await websocket.send(buff)
         # Listen for the EOT
         buff = await websocket.recv()
         try:
             assert buff == 'EOT'
-            print('[+] file_send: Received EOT')
+            if verbose: print('[v] file_send: Received EOT')
         except AssertionError:
             print('[-] file_send: The server did not respond with EOT, maybe the file transfer failed')
             return 12
@@ -345,17 +347,17 @@ async def file_download(websocket, path):
         print('[+] file_download: Received filename "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
         if 'yes' != input('[*] file_download: To allow the file transfer enter "yes": '):
             # Send EOT and quit
-            print('[+] file_download: Sending EOT to end the file transfer')
+            if verbose: print('[v] file_download: Sending EOT to end the file transfer')
             buff = 'EOT'
             await websocket.send(buff)
         else:
             # Receive the file
-            print('[+] file_download: Sending NACK to start the file transfer')
+            if verbose: print('[v] file_download: Sending NACK to start the file transfer')
             buff = 'NACK'
             await websocket.send(buff)
 
             # Listen for the file and the FACK
-            print('[+] file_download: Waiting for the file and the FACK')
+            if verbose: print('[v] file_download: Waiting for the file and the FACK')
             with open(write_file, "wb+") as file:
                 buff = await websocket.recv()
                 print('[+] file_download: File transmission has started')
@@ -369,14 +371,19 @@ async def file_download(websocket, path):
             print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
             
             # Sending the EOT
-            print('[+] file_download: File received, FACK received, sending EOT')
+            if verbose: print('[v] file_download: File received, FACK received, sending EOT')
             buff = 'EOT'
             await websocket.send(buff)
-            print('[+] file_download: EOT sent')
+            if verbose: print('[v] file_download: EOT sent')
             await websocket.wait_closed()
             print('[+] file_download: The connection was closed by the client')
     else:
-        print('[+] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
+        if verbose: print('[v] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
+
+
+# Enables verbose output
+def verbose():
+    verbose = True
 
 
 def main():
@@ -388,6 +395,7 @@ def main():
     parser = argparse.ArgumentParser(prog='netdrop', description=my_description, conflict_handler='resolve')
     parser.add_argument("-f", "--file", nargs='+', type=str, required=False, help="Client mode: Multiple input files to share")
     parser.add_argument('--file', type=str, required=False, help="Client mode: Input file to share")
+    parser.add_argument('--verbose', action='store_true', dest='verbose', required=False, help="Verbose mode: Output more info") # If present, calls verbose()
     args = parser.parse_args()
     files = args.file
 
@@ -405,8 +413,8 @@ def main():
                 print('[-] netdrop: The input file ' + file + ' is not readable, quitting...')
                 exit(1)        
         # Scan the network
-        hosts = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
-        print('[+] netdrop: Hosts found on the local network: ' + str(hosts))
+        servers = network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
+        print('[+] netdrop: Servers found on the local network: ' + str(servers))
         # Ask for a server (receiver of the file)
         server = ''        
         regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$" # my_regex = "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
@@ -418,7 +426,7 @@ def main():
             p = Process(target=client, args=(str(server), str(file),))
             processes.append(p)
             p.start()
-        print('[*] netdrop: All file_send() processes have been started')
+        if verbose: print('[v] netdrop: All file_send() processes have been started')
         # Wait for the processes to finish
         for p in processes:
             try:
