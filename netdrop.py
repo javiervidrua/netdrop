@@ -385,23 +385,21 @@ async def file_download(websocket, path):
         if verbose: print('[v] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
 
 
-# Enables verbose output
-def verbose():
-    verbose = True
-
-
 def main():
     # Register the signal handlers
     signal.signal(signal.SIGINT, keyboard_interrupt_handler)
         
     # Check the arguments
-    my_description="""By default works in server mode, for client mode use -f or --file""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
+    my_description="""By default works in server mode, for client mode use -f or --file arguments""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
     parser = argparse.ArgumentParser(prog='netdrop', description=my_description, conflict_handler='resolve')
-    parser.add_argument("-f", "--file", nargs='+', type=str, required=False, help="Client mode: Multiple input files to share")
-    parser.add_argument('--file', type=str, required=False, help="Client mode: Input file to share")
-    parser.add_argument('--verbose', action='store_true', dest='verbose', required=False, help="Verbose mode: Output more info") # If present, calls verbose()
+    parser.add_argument("-f", "--file", nargs='+', type=str, required=False, help="client mode: Multiple input files to share")
+    parser.add_argument('--file', type=str, required=False, help="client mode: Input file to share")
+    parser.add_argument('-v','--verbose', action='store_true', default=False, dest='verbose_input', required=False, help="verbose mode: Output more info") # If present, sets verbose_input to True
     args = parser.parse_args()
     files = args.file
+    # Set the verbosity
+    global verbose
+    verbose = args.verbose_input
 
     # Get the network info
     iface = get_iface()
@@ -430,16 +428,9 @@ def main():
             p = Process(target=client, args=(str(server), str(file),))
             processes.append(p)
             p.start()
-        if verbose: print('[v] netdrop: All file_send() processes have been started')
-        # Wait for the processes to finish
         for p in processes:
-            try:
-                p.join()
-            except Exception as e:
-                if hasattr(e, 'message'):
-                        print('[-] netdrop: Error joining file_send processes: ' + str(e.message))
-                else:
-                    print('[-] netdrop: Error joining file_send processes: ' + str(e))        
+            p.join()
+        if verbose: print('[v] netdrop: All files have been sent')   
     else:
         # Server
         is_client = False
