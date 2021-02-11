@@ -273,7 +273,13 @@ async def discover_server(server):
 
 # Handles a file send
 def client(server, f):
-    asyncio.get_event_loop().run_until_complete(file_send(server, f))
+    try:
+        asyncio.get_event_loop().run_until_complete(file_send(server, f))
+    except Exception as e:
+        if hasattr(e, 'message'):
+            print('[-] client: Error sending the file in file_send: ' + str(e.message))
+        else:
+            print('[-] client: Error sending the file in file_send: ' + str(e))
 
 
 # Sends a file to a server
@@ -352,12 +358,12 @@ async def file_download(websocket, path):
             print('[+] file_download: Waiting for the file and the FACK')
             with open(write_file, "wb+") as file:
                 buff = await websocket.recv()
-                start = time.time()
                 print('[+] file_download: File transmission has started')
+                start = time.time()
                 while buff != 'FACK':
-                    file.write(buff)                
+                    file.write(buff)
                     buff = await websocket.recv()
-            end = time.time()
+                end = time.time()
             size = round((os.path.getsize(write_file)/1024)/1024, 4)
             print('[*] file_download: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
             print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
@@ -417,16 +423,22 @@ def main():
                 p.join()
             except Exception as e:
                 if hasattr(e, 'message'):
-                        print('[-] netdrop: Error joining file_send processes: ' + e.message)
+                        print('[-] netdrop: Error joining file_send processes: ' + str(e.message))
                 else:
-                    print('[-] netdrop: Error joining file_send processes: ' + e)        
+                    print('[-] netdrop: Error joining file_send processes: ' + str(e))        
     else:
         # Server
         is_client = False
         # Start the server
         start_server = websockets.serve(file_download, str(iface.ip), 8765)
-        asyncio.get_event_loop().run_until_complete(start_server)
-        asyncio.get_event_loop().run_forever()
+        try:
+            asyncio.get_event_loop().run_until_complete(start_server)
+            asyncio.get_event_loop().run_forever()
+        except Exception as e:
+            if hasattr(e, 'message'):
+                print('[-] netdrop: Error downloading the file in file_download: ' + str(e.message))
+            else:
+                print('[-] netdrop: Error downloading the file in file_download: ' + str(e))    
 
     return 0
 
