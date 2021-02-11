@@ -233,8 +233,10 @@ def network_scanner_fast(ip, netmask): # 192.168.1.0, 24
         threads.append(t)
         t.start()
 
-    for t in threads:
-        t.join()
+# Don't need this
+#    for t in threads:
+#        t.join()
+#        threads.remove(t)
     
     while not que.empty():
         result = que.get()
