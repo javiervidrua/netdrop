@@ -373,6 +373,8 @@ async def file_download(websocket, path):
             buff = 'EOT'
             await websocket.send(buff)
             print('[+] file_download: EOT sent')
+            await websocket.wait_closed()
+            print('[+] file_download: The connection was closed by the client')
     else:
         print('[+] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
 
