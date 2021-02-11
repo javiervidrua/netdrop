@@ -59,7 +59,12 @@ def keyboard_interrupt_handler(signal, frame):
 
 # Returns a clean string
 def clean_string(incoming_string):
-    new_string = incoming_string
+    # If it starts with .\, we remove those chars
+    if incoming_string[0:2] == ".\\":
+        new_string = incoming_string[2:]
+    else:
+        new_string = incoming_string
+    
     new_string = new_string.replace("!","")
     new_string = new_string.replace("@","")
     new_string = new_string.replace("#","")
@@ -245,13 +250,9 @@ def network_scanner_fast(ip, netmask, verbose=False): # 192.168.1.0, 24
     return servers_available
 
 
-# Handles a file send
-def client(server, f):
-    asyncio.get_event_loop().run_until_complete(file_send(server, f))
-
-
 # Timeout for discovering servers
 async def timeout(server):
+    ret = False
     try:
         await asyncio.wait_for(discover_server(server), timeout=0.25) # 0.25 seconds for the server to recv the send
     except asyncio.TimeoutError:
@@ -262,12 +263,17 @@ async def timeout(server):
         return ret # Stop the propagation of the Exception in case it occurs
 
 
-# Discovers servers
+# Discovers if a host is running the service
 async def discover_server(server):
     uri = "ws://"+server+":8765"
     async with websockets.connect(uri) as websocket:
         print('[+] discover_server: Sending DISCOVER to ' + str(server))
         await websocket.send('DISCOVER')
+
+
+# Handles a file send
+def client(server, f):
+    asyncio.get_event_loop().run_until_complete(file_send(server, f))
 
 
 # Sends a file to a server
@@ -325,7 +331,7 @@ async def file_download(websocket, path):
             os.makedirs(directory)
         # Check if file exists
         while os.path.isfile(os.path.join(directory, filename)): # While the filename already exists, generate a new one
-            filename = str(random.randint(0,9)) + filename
+            filename = str(random.randint(0,9)) + '-' + filename
         # Create the new filename inside the downloads directory
         write_file = os.path.join(directory, filename)
 
