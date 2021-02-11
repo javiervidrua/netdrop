@@ -122,7 +122,7 @@ def get_iface():
         ip = '127.0.0.1'
     finally:
         s.close()
-        print('[+] get_iface: Host\'s IP is ' + str(ip))
+        if verbose: print('[v] get_iface: Host\'s IP is ' + str(ip))
     
     # Second, we get the nics -> https://stackoverflow.com/questions/41420165/get-ipconfig-result-with-python-in-windows/41420850#41420850
     cmd = 'wmic.exe nicconfig where "IPEnabled  = True" get ipaddress,MACAddress,IPSubnet,DNSHostName,Caption,DefaultIPGateway /format:rawxml'
@@ -177,7 +177,7 @@ def get_iface():
     
     # Fourth, we create an object to obtain interface information
     ret = ipaddress.ip_interface(iface)
-    print('[+] get_iface: Hosts network is ' + str(ret.network))
+    if verbose: print('[v] get_iface: Hosts network is ' + str(ret.network))
     return ret
 
 
@@ -295,7 +295,7 @@ async def file_send(server, f):
         await websocket.send(buff)
         # Listen for the NACK
         if verbose: print('[v] file_send: Waiting for the NACK')
-        print('[+] file_send: Waiting for the server to accept the transmission')
+        print('[+] netdrop: Waiting for the server to accept the transmission')
         buff = await websocket.recv()
         try:
             assert buff == 'NACK'
@@ -304,15 +304,17 @@ async def file_send(server, f):
             exit(11)
         # Send the file (get the size and the starting time)
         size = round((os.path.getsize(f)/1024)/1024, 4)
-        print('[+] send_file: File size is ' + str(size) + ' MB')
+        if verbose: print('[+] file_send: File size is ' + str(size) + ' MB')
         start = time.time()
-        print('[+] file_send: Sending the file ' + str(f))
-        with open(f,'rb') as file:
-            for line in file:
-                await websocket.send(line)
-        end = time.time()
-        print('[*] file_send: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
-        print('[*] file_send: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
+        print('[+] netdrop: Sending ' + str(f) + ' to ' + str(server))
+        try:
+            with open(f,'rb') as file:
+                for line in file:
+                    await websocket.send(line)
+            end = time.time()
+            print('[+] netdrop: Took ' + str(round(end - start, 4)) + ' seconds at ' + str(round(size / (end - start), 4)) + 'MB/s')
+        except Exception as e:
+            print('[-] file_send: Error during file transmission')
         # Send the FACK
         if verbose: print('[v] file_send: Sending the FACK and waiting for the EOT')
         buff = 'FACK'
@@ -345,8 +347,8 @@ async def file_download(websocket, path):
         write_file = os.path.join(directory, filename)
 
         # Ask the user for consentment
-        print('[+] file_download: Received file "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
-        if 'yes' != input('[*] file_download: To allow the file transfer enter "yes": '):
+        if verbose: print('[v] file_download: Received file "' + str(filename) + '" from ' + str(websocket.remote_address[0]) + ' on port ' + str(websocket.remote_address[1]))
+        if 'yes' != input('[*] netdrop: To download the file ' + str(filename) + ' from the IP ' + str(websocket.remote_address[0]) + ' enter "yes": '):
             # Send EOT and quit
             if verbose: print('[v] file_download: Sending EOT to end the file transfer')
             buff = 'EOT'
@@ -361,7 +363,7 @@ async def file_download(websocket, path):
             if verbose: print('[v] file_download: Waiting for the file and the FACK')
             with open(write_file, "wb+") as file:
                 buff = await websocket.recv()
-                print('[+] file_download: The file transmission has started')
+                print('[+] netdrop: The file transmission has started')
                 start = time.time()
                 while buff != 'FACK':
                     file.write(buff)
@@ -369,8 +371,7 @@ async def file_download(websocket, path):
                 end = time.time()
             try:
                 size = round((os.path.getsize(write_file)/1024)/1024, 4)
-                print('[*] file_download: Elapsed transmission time is ' + str(round(end - start, 4)) + ' seconds')
-                print('[*] file_download: Transmission speed is ' + str(round(size / (end - start), 4)) + ' MB/s')
+                print('[+] netdrop: Took ' + str(round(end - start, 4)) + ' seconds at ' + str(round(size / (end - start), 4)) + 'MB/s')
             except Exception as e:
                 print('[-] file_download: Error while calculating time and speed of transmission')
                 exit(13)
@@ -381,7 +382,7 @@ async def file_download(websocket, path):
             await websocket.send(buff)
             if verbose: print('[v] file_download: EOT sent')
             await websocket.wait_closed()
-            print('[+] file_download: Done')
+            print('[+] netdrop: Transmission done')
     else:
         if verbose: print('[v] file_download: DISCOVER received from ' + str(websocket.remote_address[0]))
 
@@ -403,6 +404,8 @@ def main():
 
     # Get the network info
     iface = get_iface()
+    print('[*] netdrop: Host\'s IP is ' + str(iface.ip))
+    print('[*] netdrop: Host\'s network is ' + str(iface.network))
 
     # Check if client or server
     if file:
@@ -427,7 +430,7 @@ def main():
         server = ''        
         regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$" # my_regex = "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"
         while not re.match(regex, server):
-            server = input("[*] Enter the IP of the end machine: ")
+            server = input("[*] netdrop: Enter the IP of the end server: ")
         # Create a process to send the file
         p = Process(target=client, args=(str(server), str(file),))
         p.start()
@@ -437,7 +440,7 @@ def main():
         # Server
         is_client = False
         # Start the server
-        print('[+] netdrop: Listening...')
+        print('[+] netdrop: Listening for incoming connections...')
         try:
             start_server = websockets.serve(file_download, str(iface.ip), 8765)
             asyncio.get_event_loop().run_until_complete(start_server)
