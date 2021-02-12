@@ -1,5 +1,10 @@
-# netdrop
-**Like AirDrop, but this runs on Python**.
+<h1 align="center">Netdrop</h1>
+<p align="center">
+  <a href="https://python.org">
+    <img src="https://img.shields.io/pypi/pyversions/Django.svg">
+  </a>
+</p>
+<p align="center"><b>Like AirDrop, but this one runs on Python</b></p>
 
 After using the disgustingly slow file sharing over bluetooth "app" that Windows 10 has, a friend of mine (@MikenTNT) came up with this idea of **making something better in Python**.
 
