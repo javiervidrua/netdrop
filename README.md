@@ -18,14 +18,14 @@ Using **websockets**, it is able to share files at **7.5MB/s average** (1000 tim
 
 ## Usage
 ```
-usage: netdrop [-h] [-f FILE [FILE ...]] [--file FILE]
+usage: netdrop [-h] [-f FILE] [-v]
 
-By default works in server mode, for client mode use -f or --file
+By default works in server mode, for client mode use -f or --file arguments
 
 optional arguments:
-  -h, --help          show this help message and exit
-  -f FILE [FILE ...]  Client mode: Multiple input files to share
-  --file FILE         Client mode: Input file to share
+  -h, --help            show this help message and exit
+  -f FILE, --file FILE  client mode: Input file to share
+  -v, --verbose         verbose mode: Output more info
 ```
 
 ## How it works
