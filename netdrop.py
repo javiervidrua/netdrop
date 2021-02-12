@@ -38,11 +38,6 @@ import ndModules
 verbose = False
 is_client = False # True = client, False = Server
 
-ndModules.files.verbose = verbose
-ndModules.network.verbose = verbose
-ndModules.scanNetwork.verbose = verbose
-
-
 
 # Handles SIGINT signal
 def keyboard_interrupt_handler(signal, frame):
@@ -79,6 +74,9 @@ def main():
 	# Set the verbosity
 	global verbose
 	verbose = args.verbose_input
+	ndModules.files.verbose = verbose
+	ndModules.network.verbose = verbose
+	ndModules.scanNetwork.verbose = verbose
 
 	# Get the network info
 	iface = ndModules.get_iface()
