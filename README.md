@@ -8,7 +8,7 @@
 
 After using the disgustingly slow file sharing over bluetooth "app" that Windows 10 has, a friend of mine (@MikenTNT) came up with this idea of **making something better in Python**.
 
-Using **websockets**, it is able to share files at **7.5MB/s** (1000 times faster than the Windows 10 "app").
+Using **websockets**, it is able to share files at **7.5MB/s average** (1000 times faster than the Windows 10 "app").
 
 **The goal wasn't to build the best file transfer tool, but to build one myself using websockets and Python, and learning a lot in the process (Done)**.
 
