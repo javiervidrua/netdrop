@@ -42,6 +42,7 @@ The user selects the desired server and starts the file transmission.
 
 ## TODO
 
+* Implement faster transmission: https://stackoverflow.com/questions/42415207/send-receive-data-with-python-socket
 * Add name discovery feature
 * Add encryption (SSL)
 
