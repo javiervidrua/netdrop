@@ -1,5 +1,3 @@
-
-
 # Returns a clean string
 def clean_string(incoming_string):
 	# If it starts with .\, we remove those chars

@@ -32,7 +32,7 @@ from multiprocessing import Process
 
 import websockets  # https://websockets.readthedocs.io/en/stable/intro.html#installation
 
-import ndModules
+import modules
 
 # Global variables
 verbose = False
@@ -42,7 +42,7 @@ is_client = False # True = client, False = Server
 # Handles SIGINT signal
 def keyboard_interrupt_handler(signal, frame):
 	print("\n[*] KeyboardInterrupt (ID: {}) has been caught. Cleaning up...".format(signal))
-	ok_join = ndModules.join_threads()
+	ok_join = modules.join_threads()
 	if not ok_join:
 		sys.exit(8)
 	else:
@@ -52,7 +52,7 @@ def keyboard_interrupt_handler(signal, frame):
 # Handles a file send
 def client(server, f):
 	try:
-		asyncio.get_event_loop().run_until_complete(ndModules.file_send(server, f))
+		asyncio.get_event_loop().run_until_complete(modules.file_send(server, f))
 	except Exception as e:
 		if hasattr(e, 'message'):
 			print('[-] client: Error sending the file in file_send: ' + str(e.message))
@@ -74,12 +74,11 @@ def main():
 	# Set the verbosity
 	global verbose
 	verbose = args.verbose_input
-	ndModules.files.verbose = verbose
-	ndModules.network.verbose = verbose
-	ndModules.scanNetwork.verbose = verbose
+	modules.filetransmission.verbose = verbose
+	modules.networkutils.verbose = verbose
 
 	# Get the network info
-	iface = ndModules.get_iface()
+	iface = modules.get_iface()
 	print('[*] netdrop: Host\'s IP is ' + str(iface.ip))
 	print('[*] netdrop: Host\'s network is ' + str(iface.network))
 
@@ -94,7 +93,7 @@ def main():
 			exit(1)
 		# Scan the network
 		try:
-			servers = ndModules.network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
+			servers = modules.network_scanner_fast(str(iface.network).split('/')[0], str(iface.network).split('/')[1])
 		except Exception as e:
 			if hasattr(e, 'message'):
 				print('[-] netdrop: Exception caugth while scanning the network: ' + str(e.message))
@@ -118,7 +117,7 @@ def main():
 		# Start the server
 		print('[+] netdrop: Listening for incoming connections...')
 		try:
-			start_server = websockets.serve(ndModules.file_download, str(iface.ip), 8765)
+			start_server = websockets.serve(modules.file_download, str(iface.ip), 8765)
 			asyncio.get_event_loop().run_until_complete(start_server)
 			asyncio.get_event_loop().run_forever()
 		except Exception as e:

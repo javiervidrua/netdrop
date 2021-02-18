@@ -1,16 +1,12 @@
-
-
 import os
 import random
 import time
-
 import websockets
+from .generalutils import clean_string
 
-from .utilities import clean_string
 
 # Global variables
 verbose = False
-
 
 
 # Sends a file to a server
@@ -61,7 +57,6 @@ async def file_send(server, f):
 # Handles a file download
 async def file_download(websocket, path):
 	# Wait for a connection
-
 	buff = await websocket.recv()
 	if buff != 'DISCOVER':
 		filename = clean_string(str(buff))
