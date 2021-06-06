@@ -42,7 +42,7 @@ import random
 
 
 # Global variables
-verbose = False
+verbose = True
 is_client = False # True = client, False = Server
 threads = []
 
@@ -101,6 +101,8 @@ def clean_string(incoming_string):
 # https://docs.python.org/3/howto/sockets.html
 # Returns the interface of the local network of the machine in CIDR format (e.g 192.168.1.70/24)
 def get_iface():
+    global verbose
+
     # First, we get the IP of the host -> https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib
     if verbose: print('[v] get_iface: Getting the IP of the machine')
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -192,6 +194,8 @@ def ping(ip):
 
 # Scans the local network and returns a list of the hosts alive
 def network_scanner_slow(ip, netmask): # 192.168.1.0, 24
+    global verbose
+    
     # Create the network
     net_ip = ipaddress.ip_network(str(str(ip) + '/' + str(netmask)))
     if verbose: print('[v] Scanning ' + str(net_ip) + '...')
@@ -218,6 +222,8 @@ def network_scanner_slow(ip, netmask): # 192.168.1.0, 24
 
 # Scans the local network and returns a list of the hosts alive
 def network_scanner_fast(ip, netmask): # 192.168.1.0, 24
+    global verbose
+    
     # Create the network
     net_ip = ipaddress.ip_network(str(str(ip) + '/' + str(netmask)))
     if verbose: print('[v] Scanning ' + str(net_ip) + '...')
@@ -268,6 +274,8 @@ async def timeout(server):
 
 # Discovers if a host is running the service
 async def discover_server(server):
+    global verbose
+    
     uri = "ws://"+server+":8765"
     async with websockets.connect(uri) as websocket:
         if verbose: print('[v] discover_server: Sending DISCOVER to ' + str(server))
@@ -287,6 +295,8 @@ def client(server, f):
 
 # Sends a file to a server
 async def file_send(server, f):
+    global verbose
+    
     uri = "ws://"+server+":8765"
     async with websockets.connect(uri) as websocket:
         # Send the name of the file
@@ -331,6 +341,8 @@ async def file_send(server, f):
 
 # Handles a file download
 async def file_download(websocket, path):
+    global verbose
+    
     # Wait for a connection
 
     buff = await websocket.recv()
@@ -394,7 +406,7 @@ def main():
     # Check the arguments
     my_description="""By default works in server mode, for client mode use -f or --file arguments""" # https://stackoverflow.com/questions/18106327/display-pydocs-description-as-part-of-argparse-help
     parser = argparse.ArgumentParser(prog='netdrop', description=my_description, conflict_handler='resolve')
-    parser.add_argument("-f", "--file", type=str, required=False, help="client mode: Input file to share")
+    parser.add_argument("-f", "--file", type=str, required=False, help="File to share or get")
     parser.add_argument('-v','--verbose', action='store_true', default=False, dest='verbose_input', required=False, help="verbose mode: Output more info") # If present, sets verbose_input to True
     args = parser.parse_args()
     file = args.file
