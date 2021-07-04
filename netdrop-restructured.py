@@ -26,6 +26,7 @@ SOFTWARE.
 import os
 import socket
 import sys
+import netifaces
 
 
 # Globals
@@ -67,7 +68,7 @@ DESCRIPTION
 
         Optional arguments:
 
-        -v      show more information about the execution
+        -v      be more verbose
         -h      print this help and exit''')
     sys.exit(0)
 
@@ -101,8 +102,12 @@ if __name__ == '__main__':
     if not "file" in arguments and not "directory" in arguments and not "new" in arguments:
         print_help_and_exit()
     
-    # Check if receive
+    # Check if the user receives or sends
     if "new" in arguments:
-        print("[+] Receiving mode")
+        if arguments['verbose']: print("[+] Receiving mode")
     else:
-        print("[+] Sending mode")
+        if arguments['verbose']: print("[+] Sending mode")
+    
+    # Test the netifaces module -> WORKS!
+    for interface in netifaces.interfaces():
+        print(netifaces.ifaddresses(interface))
