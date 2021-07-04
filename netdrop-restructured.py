@@ -82,7 +82,7 @@ if __name__ == '__main__':
             print_help_and_exit()
         elif sys.argv[i] == '-v':
             arguments["verbose"] = True
-            print("[+] Verbose mode")
+            print("[*] Verbose mode")
             i +=1
         elif sys.argv[i] == '-f':
             if file_exists(sys.argv[i+1]):
@@ -104,10 +104,30 @@ if __name__ == '__main__':
     
     # Check if the user receives or sends
     if "new" in arguments:
-        if arguments['verbose']: print("[+] Receiving mode")
+        if arguments['verbose']: print("[*] Receiving mode")
     else:
-        if arguments['verbose']: print("[+] Sending mode")
-    
-    # Test the netifaces module -> WORKS!
+        if arguments['verbose']: print("[*] Sending mode")
+
+    # Get the IP of the interface with Internet connection
+    interfaceWithInternetConnectionIP = get_ip_address()
+
+    # Get the info about the interface with Internet connection
+    found = False
     for interface in netifaces.interfaces():
-        print(netifaces.ifaddresses(interface))
+        for key in netifaces.ifaddresses(interface).values(): # https://pypi.org/project/netifaces/
+            if arguments['verbose']: print("[*] Checking if the following interface is the one with Internet connection: " + str(key))
+            for interfaceInformationDictionary in key:
+                if "addr" in interfaceInformationDictionary:
+                    # If the IP is the same as the one found by the Google DNS query method, store the info
+                    if interfaceInformationDictionary["addr"] == interfaceWithInternetConnectionIP:
+                        interfaceWithInternetConnection = interfaceInformationDictionary
+                        if arguments['verbose']: print("[+] Found the interface with Internet connection: " + str(interfaceWithInternetConnection))
+                        # Set a flag to be able to break all the loops when the interface is found
+                        found = True
+                        break
+            if found: break
+        if found: break
+    
+    if not found:
+        print("[-] Could not find the interface with Internet connection, aborting")
+        sys.exit(1)
