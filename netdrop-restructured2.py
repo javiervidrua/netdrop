@@ -19,16 +19,24 @@ SOFTWARE.
 '''
 
 
+# For everything
 import os
 import socket
 import sys
 import netifaces
 import threading
+import time
+# For the SSL stuff
+import hashlib
+from Crypto import Random
+import Crypto.Cipher.AES as AES
+from Crypto.PublicKey import RSA
 
 
 # Globals
 PORTDISCOVER = 30000
 PORTACK = 30001
+PORTDATA = 30001
 arguments = { "verbose": False }
 interfaceWithInternetConnection = None
 
@@ -39,19 +47,70 @@ class Client():
         super().__init__()
         self.servers = []
         self.threads = []
+
+        self.running = True
         t = threading.Thread(target=self.handle_ack)
         self.threads.append(t)
         t.start()
-        self.running = True
+
         self.discover_servers()
+
+        self.find_file_server()
     
     def discover_servers(self):
-        if arguments['verbose']: print("[+] Client: Sending broadcast DISCOVER packet")
+        if arguments['verbose']: print("[+] Client: Sending broadcast DISCOVER packet on port '{0}'".format(PORTDISCOVER))
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         sock.sendto("DISCOVER".encode(), (interfaceWithInternetConnection["broadcast"], PORTDISCOVER))
+    
+    def find_file_server(self):
+        # Generate all the necessary stuff
+        self.random = Random.new().read
+        self.rsaKey = RSA.generate(1024, self.random)
+        self.rsaKeyPublic = self.rsaKey.publickey().exportKey()
+        self.rsaKeyprivate = self.rsaKey.exportKey()
+        self.rsaKeyPublicHash = hashlib.md5(self.rsaKeyPublic)
+        self.rsaKeyPublicHashDigest = self.rsaKeyPublicHash.hexdigest()
+
+        # For each server that answered the DISCOVER, ask for the file
+        for server in self.servers:
+            try:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect((server, PORTDATA))
+                check = True
+            except BaseException:
+                if arguments['verbose']: print("[-] Error: connect: Error connecting to the server '{0}' on port '{1}'".format(server, PORTDATA))
+
+            if check is True:
+                if arguments['verbose']: print("[*] Connected to the server {0} on port {1}".format(server, PORTDATA))
+                self.sock.send(self.rsaKeyPublic + ":" + self.rsaKeyPublicHashDigest)
+                response = self.sock.recv(4096)
+                serverPublicKeyAndHash = response.split(":")
+                encrypted = serverPublicKeyAndHash[0]
+                serverPublicKey = serverPublicKeyAndHash[1]
+
+                if arguments['verbose']: print("[*] Server's public key '{0}'".format(serverPublicKey))
+                decrypted = RSA.importKey(self.rsaKeyprivate).decrypt(eval(encrypted.replace("\r\n", '')))
+                splittedDecrypt = decrypted.split(":")
+                self.eightByte = splittedDecrypt[0]
+                self.eightByteHash = splittedDecrypt[1]
+                self.serverPublicKeyHash = splittedDecrypt[2]
+                if arguments['verbose']: print("[*] Client's eight byte key in hash '{0}'".format(self.eightByte))
+
+                self.session = hashlib.md5(self.eightByte)
+                self.sessionDigest = self.session.hexdigest()
+
+                self.serverHash = hashlib.md5(serverPublicKey)
+                self.serverHashDigest = self.hash.hexdigest()
+                if arguments['verbose']: print("Matching server's public key & eight byte key")
+
+                if self.serverHashDigest == self.serverPublicKeyHash and self.session == self.eightByteHash:
+                    if arguments['verbose']: print("hasta aquí, works")
+
+            # send HELLO
+            # recv ACK
 
     def handle_ack(self):
-        if arguments['verbose']: print("[*] Client: Starting to listen for ACK packets from servers")
+        if arguments['verbose']: print("[*] Client: Starting to listen for ACK packets from servers on port '{0}'".format(PORTACK))
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.bind((interfaceWithInternetConnection["addr"], PORTACK))
         while self.running:
@@ -69,26 +128,80 @@ class Server():
     def __init__(self):
         super().__init__()
         self.threads = []
+
+        self.running = True
         t = threading.Thread(target=self.handle_broadcasts)
         self.threads.append(t)
         t.start()
-        self.running = True
+        t = threading.Thread(target=self.handle_connections)
+        self.threads.append(t)
+        t.start()
     
     def handle_broadcasts(self):
-        self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-        self.sock.bind((interfaceWithInternetConnection["addr"], PORTDISCOVER))
+        self.sockBroadcasts = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        self.sockBroadcasts.bind((interfaceWithInternetConnection["addr"], PORTDISCOVER))
 
-        if arguments['verbose']: print("[*] Server: Starting to listen for DISCOVER packets from clients")
+        if arguments['verbose']: print("[*] Server: Starting to listen for DISCOVER packets from clients on port '{0}'".format(PORTDISCOVER))
         while self.running:
-            (data, addr) = self.sock.recvfrom(1024)
-            if data.decode() == "DISCOVER":
-                if arguments['verbose']: print("[*] Server: Client '{0}' has reached us".format(addr[0]))
-                self.sock.sendto("ACK".encode(), (addr[0], PORTACK))
+            try:
+                (data, addr) = self.sockBroadcasts.recvfrom(1024)
+                if data.decode() == "DISCOVER":
+                    if arguments['verbose']: print("[*] Server: Client '{0}' has found us".format(addr[0]))
+                    self.sockBroadcasts.sendto("ACK".encode(), (addr[0], PORTACK))
+            except Exception as e:
+                print("[-] Error: handle_broadcasts error: {0}".format(e.__repr__()))
+                time.sleep(10)
+    
+    def handle_connections(self):
+        # Generate all the necessary stuff
+        self.random = Random.new().read
+        self.rsaKey = RSA.generate(1024, self.random)
+        self.rsaKeyPublic = self.rsaKey.publickey().exportKey()
+        self.rsaKeyprivate = self.rsaKey.exportKey()
+        self.rsaKeyPublicHash = hashlib.md5(self.rsaKeyPublic)
+        self.rsaKeyPublicHashDigest = self.rsaKeyPublicHash.hexdigest()
+        self.eightByte = os.urandom(8)
+        self.session = hashlib.md5(self.eightByte)
+        self.sessionDigest = self.session.hexdigest()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind((interfaceWithInternetConnection["addr"], PORTDATA))
+        if arguments['verbose']: print("[*] Server: Starting to listen for DATA packets from clients on port '{0}'".format(PORTDATA))
+        self.sock.listen()
+
+        while self.running:
+            (conn, addr) = self.sock.accept()
+            t = threading.Thread(target=self.handle_connection, args=(conn, addr))
+            self.threads.append(t)
+            t.start()
+    
+    def handle_connection(self, conn, addr):
+        while self.running:
+            response = conn.recv(4096)
+            self.clientPublicKeyAndHash = response.split(":")
+            self.clientPublicKey = self.clientPublicKeyAndHash[0]
+            self.clientPublicKeyHash = self.clientPublicKeyAndHash[1]
+
+            print("[*] Client's public key '{0}'".format(self.clientPublicKey))
+            self.clientPublicKey = self.clientPublicKey.replace("\r\n", '')
+            self.clientPublicKeyHash = self.clientPublicKeyHash.replace("\r\n", '')
+            self.serverHash = hashlib.md5(self.clientPublicKey)
+            self.serverHashDigest = self.serverHash.hexdigest()
+
+            if self.serverHashDigest == self.clientPublicKeyHash:
+                # Send public key, encrypted eight byte, hash of eight byte and server public key hash
+                print("[*] Client's public key and public key hash match")
+                self.clientPublicKey = RSA.importKey(self.clientPublicKey)
+                unencrypted = eightByte + ":" + session + ":" + self.rsaKeyPublicHashDigest
+                encrypted = self.clientPublicKey.encrypt(unencrypted, None)
+                conn.send(str(encrypted) + ":" + self.rsaKeyPublic)
 
     def stop(self):
         self.running = False
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         sock.sendto(''.encode(), (interfaceWithInternetConnection["addr"], PORTDISCOVER))
+        sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+        sock.connect((interfaceWithInternetConnection["addr"], PORTDATA))
 
 
 # Functions
