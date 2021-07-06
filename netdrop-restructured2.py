@@ -25,12 +25,10 @@ import socket
 import sys
 import netifaces
 import threading
-import time
 # For the SSL stuff
-import hashlib
-from Crypto import Random
-import Crypto.Cipher.AES as AES
-from Crypto.PublicKey import RSA
+from os.path import expanduser
+from OpenSSL import crypto
+import ssl
 
 
 # Globals
@@ -63,14 +61,6 @@ class Client():
         sock.sendto("DISCOVER".encode(), (interfaceWithInternetConnection["broadcast"], PORTDISCOVER))
     
     def find_file_server(self):
-        # Generate all the necessary stuff
-        self.random = Random.new().read
-        self.rsaKey = RSA.generate(1024, self.random)
-        self.rsaKeyPublic = self.rsaKey.publickey().exportKey()
-        self.rsaKeyprivate = self.rsaKey.exportKey()
-        self.rsaKeyPublicHash = hashlib.md5(self.rsaKeyPublic)
-        self.rsaKeyPublicHashDigest = self.rsaKeyPublicHash.hexdigest()
-
         # For each server that answered the DISCOVER, ask for the file
         for server in self.servers:
             try:
@@ -82,29 +72,9 @@ class Client():
 
             if check is True:
                 if arguments['verbose']: print("[*] Connected to the server {0} on port {1}".format(server, PORTDATA))
-                self.sock.send(self.rsaKeyPublic + ":" + self.rsaKeyPublicHashDigest)
+                self.sock.send("HELLO".encode())
                 response = self.sock.recv(4096)
-                serverPublicKeyAndHash = response.split(":")
-                encrypted = serverPublicKeyAndHash[0]
-                serverPublicKey = serverPublicKeyAndHash[1]
-
-                if arguments['verbose']: print("[*] Server's public key '{0}'".format(serverPublicKey))
-                decrypted = RSA.importKey(self.rsaKeyprivate).decrypt(eval(encrypted.replace("\r\n", '')))
-                splittedDecrypt = decrypted.split(":")
-                self.eightByte = splittedDecrypt[0]
-                self.eightByteHash = splittedDecrypt[1]
-                self.serverPublicKeyHash = splittedDecrypt[2]
-                if arguments['verbose']: print("[*] Client's eight byte key in hash '{0}'".format(self.eightByte))
-
-                self.session = hashlib.md5(self.eightByte)
-                self.sessionDigest = self.session.hexdigest()
-
-                self.serverHash = hashlib.md5(serverPublicKey)
-                self.serverHashDigest = self.hash.hexdigest()
-                if arguments['verbose']: print("Matching server's public key & eight byte key")
-
-                if self.serverHashDigest == self.serverPublicKeyHash and self.session == self.eightByteHash:
-                    if arguments['verbose']: print("hasta aquí, works")
+                if arguments['verbose']: print("[*] Server response: '{0}'".format(response.decode()))
 
             # send HELLO
             # recv ACK
@@ -128,6 +98,7 @@ class Server():
     def __init__(self):
         super().__init__()
         self.threads = []
+        self.generateSelfSignedCertificate()
 
         self.running = True
         t = threading.Thread(target=self.handle_broadcasts)
@@ -150,19 +121,8 @@ class Server():
                     self.sockBroadcasts.sendto("ACK".encode(), (addr[0], PORTACK))
             except Exception as e:
                 print("[-] Error: handle_broadcasts error: {0}".format(e.__repr__()))
-                time.sleep(10)
     
     def handle_connections(self):
-        # Generate all the necessary stuff
-        self.random = Random.new().read
-        self.rsaKey = RSA.generate(1024, self.random)
-        self.rsaKeyPublic = self.rsaKey.publickey().exportKey()
-        self.rsaKeyprivate = self.rsaKey.exportKey()
-        self.rsaKeyPublicHash = hashlib.md5(self.rsaKeyPublic)
-        self.rsaKeyPublicHashDigest = self.rsaKeyPublicHash.hexdigest()
-        self.eightByte = os.urandom(8)
-        self.session = hashlib.md5(self.eightByte)
-        self.sessionDigest = self.session.hexdigest()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((interfaceWithInternetConnection["addr"], PORTDATA))
@@ -171,6 +131,8 @@ class Server():
 
         while self.running:
             (conn, addr) = self.sock.accept()
+            # https://carlo-hamalainen.net/2013/01/24/python-ssl-socket-echo-test-with-self-signed-certificate/
+            #connstream = ssl.wrap_socket(conn, server_side=True, certfile=os.path.join(self.home,"selfsigned.crt"), keyfile=os.path.join(self.home,"private.key"))
             t = threading.Thread(target=self.handle_connection, args=(conn, addr))
             self.threads.append(t)
             t.start()
@@ -178,23 +140,52 @@ class Server():
     def handle_connection(self, conn, addr):
         while self.running:
             response = conn.recv(4096)
-            self.clientPublicKeyAndHash = response.split(":")
-            self.clientPublicKey = self.clientPublicKeyAndHash[0]
-            self.clientPublicKeyHash = self.clientPublicKeyAndHash[1]
+            print("[*] Client packet: '{0}'".format(response.decode()))
+            conn.send("ACK".encode())
+        
+    def generateSelfSignedCertificate(self, 
+        emailAddress="emailAddress",
+        commonName="commonName",
+        countryName="NT",
+        localityName="localityName",
+        stateOrProvinceName="stateOrProvinceName",
+        organizationName="organizationName",
+        organizationUnitName="organizationUnitName",
+        serialNumber=0,
+        validityStartInSeconds=0,
+        validityEndInSeconds=10*365*24*60*60,
+        KEY_FILE = "private.key",
+        CERT_FILE = "selfsigned.crt"):
+        '''https://stackoverflow.com/questions/27164354/create-a-self-signed-x509-certificate-in-python'''
 
-            print("[*] Client's public key '{0}'".format(self.clientPublicKey))
-            self.clientPublicKey = self.clientPublicKey.replace("\r\n", '')
-            self.clientPublicKeyHash = self.clientPublicKeyHash.replace("\r\n", '')
-            self.serverHash = hashlib.md5(self.clientPublicKey)
-            self.serverHashDigest = self.serverHash.hexdigest()
-
-            if self.serverHashDigest == self.clientPublicKeyHash:
-                # Send public key, encrypted eight byte, hash of eight byte and server public key hash
-                print("[*] Client's public key and public key hash match")
-                self.clientPublicKey = RSA.importKey(self.clientPublicKey)
-                unencrypted = eightByte + ":" + session + ":" + self.rsaKeyPublicHashDigest
-                encrypted = self.clientPublicKey.encrypt(unencrypted, None)
-                conn.send(str(encrypted) + ":" + self.rsaKeyPublic)
+        # To look at the generated file using openssl:
+        #  openssl x509 -inform pem -in selfsigned.crt -noout -text
+        # Generate a RSA key pair
+        k = crypto.PKey()
+        k.generate_key(crypto.TYPE_RSA, 4096)
+        # Generate a self-signed certificate
+        cert = crypto.X509()
+        cert.get_subject().C = countryName
+        cert.get_subject().ST = stateOrProvinceName
+        cert.get_subject().L = localityName
+        cert.get_subject().O = organizationName
+        cert.get_subject().OU = organizationUnitName
+        cert.get_subject().CN = commonName
+        cert.get_subject().emailAddress = emailAddress
+        cert.set_serial_number(serialNumber)
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(validityEndInSeconds)
+        cert.set_issuer(cert.get_subject())
+        cert.set_pubkey(k)
+        cert.sign(k, 'sha512')
+        # Write to files
+        self.home = os.path.join(expanduser("~"), ".netdrop")
+        if not os.path.isdir(home):
+            os.mkdir(home)
+        with open(os.path.join(home, KEY_FILE), "wt") as f:
+            f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode("utf-8"))
+        with open(os.path.join(home, CERT_FILE), "wt") as f:
+            f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k).decode("utf-8"))
 
     def stop(self):
         self.running = False
@@ -202,6 +193,8 @@ class Server():
         sock.sendto(''.encode(), (interfaceWithInternetConnection["addr"], PORTDISCOVER))
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         sock.connect((interfaceWithInternetConnection["addr"], PORTDATA))
+        self.cert.close()
+        self.key.close()
 
 
 # Functions
