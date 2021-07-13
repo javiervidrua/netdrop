@@ -45,12 +45,14 @@ class Client():
         super().__init__()
         self.servers = []
         self.threads = []
+        self.lock = threading.Lock()
 
         self.running = True
-        t = threading.Thread(target=self.handle_ack)
+        t = threading.Thread(target=self.handle_broadcasts_ack)
         self.threads.append(t)
         t.start()
 
+        self.lock.acquire()
         self.discover_servers()
 
         self.find_file_server()
@@ -61,10 +63,14 @@ class Client():
         sock.sendto("DISCOVER".encode(), (interfaceWithInternetConnection["broadcast"], PORTDISCOVER))
     
     def find_file_server(self):
+        self.lock.acquire()
         # For each server that answered the DISCOVER, ask for the file
         for server in self.servers:
             try:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                #self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                #self.sock.connect((server, PORTDATA))
+                context = ssl.SSLContext()
+                self.sock = context.wrap_socket(socket.socket(socket.AF_INET))
                 self.sock.connect((server, PORTDATA))
                 check = True
             except BaseException:
@@ -79,7 +85,7 @@ class Client():
             # send HELLO
             # recv ACK
 
-    def handle_ack(self):
+    def handle_broadcasts_ack(self):
         if arguments['verbose']: print("[*] Client: Starting to listen for ACK packets from servers on port '{0}'".format(PORTACK))
         self.sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         self.sock.bind((interfaceWithInternetConnection["addr"], PORTACK))
@@ -88,6 +94,7 @@ class Client():
             if data.decode() == "ACK":
                 if arguments['verbose']: print("[+] Client: Appending server '{0}' to the servers list".format(addr[0]))
                 self.servers.append(addr[0])
+                self.lock.release()
             
     def stop(self):
         self.running = False
@@ -98,6 +105,9 @@ class Server():
     def __init__(self):
         super().__init__()
         self.threads = []
+        self.home = os.path.join(expanduser("~"), ".netdrop")
+        self.certFile = os.path.join(self.home, "certificate.pem")
+        self.keyFile = os.path.join(self.home, "key.pem")
         self.generateSelfSignedCertificate()
 
         self.running = True
@@ -123,19 +133,40 @@ class Server():
                 print("[-] Error: handle_broadcasts error: {0}".format(e.__repr__()))
     
     def handle_connections(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((interfaceWithInternetConnection["addr"], PORTDATA))
-        if arguments['verbose']: print("[*] Server: Starting to listen for DATA packets from clients on port '{0}'".format(PORTDATA))
-        self.sock.listen()
+        #self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #self.sock.bind((interfaceWithInternetConnection["addr"], PORTDATA))
+        #if arguments['verbose']: print("[*] Server: Starting to listen for DATA packets from clients on port '{0}'".format(PORTDATA))
+        #self.sock.listen(4)
+        #
+        #while self.running:
+        #    (conn, addr) = self.sock.accept()
+        #    # https://carlo-hamalainen.net/2013/01/24/python-ssl-socket-echo-test-with-self-signed-certificate/
+        #    #connstream = ssl.wrap_socket(conn, server_side=True, certfile=os.path.join(self.home, ".netdrop" ,"selfsigned.crt"), keyfile=os.path.join(self.home, ".netdrop" ,"private.key"), ssl.PROTOCOL_SSLv23)
+        #    t = threading.Thread(target=self.handle_connection, args=(conn, addr))
+        #    self.threads.append(t)
+        #    t.start()
+        
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=self.certFile, keyfile=self.keyFile)
 
-        while self.running:
-            (conn, addr) = self.sock.accept()
-            # https://carlo-hamalainen.net/2013/01/24/python-ssl-socket-echo-test-with-self-signed-certificate/
-            #connstream = ssl.wrap_socket(conn, server_side=True, certfile=os.path.join(self.home,"selfsigned.crt"), keyfile=os.path.join(self.home,"private.key"))
-            t = threading.Thread(target=self.handle_connection, args=(conn, addr))
-            self.threads.append(t)
-            t.start()
+        bindsocket = socket.socket()
+        bindsocket.bind((interfaceWithInternetConnection["addr"], PORTDATA))
+        bindsocket.listen(5)
+
+        while True:
+            newsocket, fromaddr = bindsocket.accept()
+            connstream = context.wrap_socket(newsocket, server_side=True)
+            try:
+                t = threading.Thread(target=self.handle_connection, args=(connstream, fromaddr))
+                self.threads.append(t)
+                t.start()
+            finally:
+                connstream.shutdown(socket.SHUT_RDWR)
+                connstream.close()
+        
+        # https://pythontic.com/ssl/sslsocket/introduction
+        # Improve the above with the info of the link
     
     def handle_connection(self, conn, addr):
         while self.running:
@@ -143,49 +174,32 @@ class Server():
             print("[*] Client packet: '{0}'".format(response.decode()))
             conn.send("ACK".encode())
         
-    def generateSelfSignedCertificate(self, 
-        emailAddress="emailAddress",
-        commonName="commonName",
-        countryName="NT",
-        localityName="localityName",
-        stateOrProvinceName="stateOrProvinceName",
-        organizationName="organizationName",
-        organizationUnitName="organizationUnitName",
-        serialNumber=0,
-        validityStartInSeconds=0,
-        validityEndInSeconds=10*365*24*60*60,
-        KEY_FILE = "private.key",
-        CERT_FILE = "selfsigned.crt"):
-        '''https://stackoverflow.com/questions/27164354/create-a-self-signed-x509-certificate-in-python'''
-
-        # To look at the generated file using openssl:
-        #  openssl x509 -inform pem -in selfsigned.crt -noout -text
-        # Generate a RSA key pair
-        k = crypto.PKey()
-        k.generate_key(crypto.TYPE_RSA, 4096)
-        # Generate a self-signed certificate
-        cert = crypto.X509()
-        cert.get_subject().C = countryName
-        cert.get_subject().ST = stateOrProvinceName
-        cert.get_subject().L = localityName
-        cert.get_subject().O = organizationName
-        cert.get_subject().OU = organizationUnitName
-        cert.get_subject().CN = commonName
-        cert.get_subject().emailAddress = emailAddress
-        cert.set_serial_number(serialNumber)
-        cert.gmtime_adj_notBefore(0)
-        cert.gmtime_adj_notAfter(validityEndInSeconds)
-        cert.set_issuer(cert.get_subject())
-        cert.set_pubkey(k)
-        cert.sign(k, 'sha512')
+    def generateSelfSignedCertificate(self):
         # Write to files
-        self.home = os.path.join(expanduser("~"), ".netdrop")
-        if not os.path.isdir(home):
-            os.mkdir(home)
-        with open(os.path.join(home, KEY_FILE), "wt") as f:
-            f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert).decode("utf-8"))
-        with open(os.path.join(home, CERT_FILE), "wt") as f:
-            f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, k).decode("utf-8"))
+        if not os.path.isdir(self.home):
+            os.mkdir(self.home)
+        
+        if not os.path.isfile(self.keyFile) and not os.path.isfile(self.certFile):
+            key = crypto.PKey()
+            with open(self.keyFile, "wb") as f:
+                key.generate_key(crypto.TYPE_RSA, 4096)
+                f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, key))
+            
+            with open(self.certFile, "wb") as f:
+                cert = crypto.X509()
+                cert.get_subject().CN = '127.0.0.1'
+                cert.get_subject().C = 'ES'
+                cert.get_subject().ST = 'ES'
+                cert.get_subject().L = 'ES'
+                cert.get_subject().O = 'ES'
+                cert.get_subject().OU = 'ES'
+                cert.set_serial_number(1000)
+                cert.gmtime_adj_notBefore(0)
+                cert.gmtime_adj_notAfter(315360000)
+                cert.set_issuer(cert.get_subject())
+                cert.set_pubkey(key)
+                cert.sign(key, "sha256")
+                f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
 
     def stop(self):
         self.running = False
@@ -193,8 +207,6 @@ class Server():
         sock.sendto(''.encode(), (interfaceWithInternetConnection["addr"], PORTDISCOVER))
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
         sock.connect((interfaceWithInternetConnection["addr"], PORTDATA))
-        self.cert.close()
-        self.key.close()
 
 
 # Functions
