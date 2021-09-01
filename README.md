@@ -1,50 +1,65 @@
 <h1 align="center">Netdrop</h1>
-<p align="center">
-  <a href="https://python.org">
-    <img src="https://img.shields.io/pypi/pyversions/Django.svg">
-  </a>
-</p>
 <p align="center"><b>Like AirDrop, but this one runs on Python</b></p>
 
 After using the disgustingly slow file sharing over bluetooth "app" that Windows 10 has, a friend of mine (@MikenTNT) came up with this idea of **making something better in Python**.
 
-Using **websockets**, it is able to share files at **7.5MB/s average** (1000 times faster than the Windows 10 "app").
+The initial implementation was done using **websockets**, but the latest release uses regular sockets to improve the transmission speeds (at least 2x).
+
+It is able to share files at an average of **20MB/s** (gazillion times faster than the Windows 10 "app").
 
 **The goal wasn't to build the best file transfer tool, but to build one myself using websockets and Python, and learning a lot in the process (Done)**.
 
+After that, like I just said, I refactored the code to use regular sockets and encryption using RSA and AES, so it's safer and faster. (I also learned a lot working with broadcast packets, threads and encryption).
+
 ## Supported systems
 
-**Right now it only works on Windows** (tested on Windows 10 but it should run on any version that has *Python3* installed) **but the plan is to make it run on anything that has *Python3* installed on it**.
+It runs on anything that has **Python3** installed on it. Just install the requirements with the following commands:
+
+```bash
+pip3 install --upgrade pip
+pip3 install -r requirements.txt
+```
 
 ## Usage
 ```
-usage: netdrop [-h] [-f FILE] [-v]
+NAME
+        Netdrop - Transfer files the easy way
+SYNOPSIS
+        netdrop.py -f <FILE> [OPTIONS]
+DESCRIPTION
+        Transfers a file between hosts of the same subnet.
+        Quick and safe, using RSA and AES encryption.
 
-By default works in server mode, for client mode use -f or --file arguments
+        Mandatory arguments:
+        -f FILE
+                File to transfer (download/upload)
+        Optional arguments:
+        -v      be more verbose
+        -h      print this help and exit
+```
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -f FILE, --file FILE  client mode: Input file to share
-  -v, --verbose         verbose mode: Output more info
+## Example
+
+#### Sender
+
+```bash
+python3 netdrop.py -f file
+```
+
+#### Receiver
+```bash
+python3 netdrop.py -f file
 ```
 
 ## How it works
 
-### Server mode
+To use it, both users need to run the tool with the same argument, that is, the same filename, and they have to be connected to the same subnet.
 
-Listens on a port for incomming connections, then downloads the files to the program directory.
+If the file exists, the tool will work in server mode, if otherwise, in client mode.
 
-### Client mode
+The tool will automatically search for active hosts across the subnet and try to connect to alive netdrop servers, listening on high ports (30000, 30001).
 
-Looks for active hosts in the subnet that have the service up and running.
-
-The user selects the desired server and starts the file transmission.
-
-## TODO
-
-* Implement faster transmission: https://stackoverflow.com/questions/42415207/send-receive-data-with-python-socket
-* Add name discovery feature
-* Add encryption (SSL)
+It generates a RSA key pair and a random AES key. The RSA keys are only used so the AES key can be transmitted safely across the network. Once that is done, the AES key will be used to encrypt all of the packets sent between the computers.
 
 ## License
 
