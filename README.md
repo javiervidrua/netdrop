@@ -11,6 +11,12 @@ It is able to share files at an average of **20MB/s** (gazillion times faster th
 
 After that, like I just said, I refactored the code to use regular sockets and encryption using RSA and AES, so it's safer and faster. (I also learned a lot working with broadcast packets, threads and encryption).
 
+## Features
+
+* Quick file transfer between computers of the same network.
+* Safe file transfer, using RSA and AES encryption.
+* Easy file transfer between diferent OS (Windows/Linux/Mac).
+
 ## Supported systems
 
 It runs on anything that has **Python3** installed on it. Just install the requirements with the following commands:
