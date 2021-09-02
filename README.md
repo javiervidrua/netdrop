@@ -40,6 +40,8 @@ DESCRIPTION
 
 ## Example
 
+![Example](test.gif)
+
 #### Sender
 
 ```bash
