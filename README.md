@@ -69,6 +69,8 @@ The tool will automatically search for active hosts across the subnet and try to
 
 It generates a RSA key pair and a random AES key. The RSA keys are only used so the AES key can be transmitted safely across the network. Once that is done, the AES key will be used to encrypt all of the packets sent between the computers.
 
+In order to download the file, the client sends the filename and if it's the same filename that the server has, the file transmission begins. Otherwise, the file transmission gets rejected.
+
 ## License
 
 MIT License
