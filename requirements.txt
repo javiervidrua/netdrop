@@ -1,4 +1,4 @@
-cryptography==41.0.0
+cryptography==41.0.4
 pycryptodome==3.10.1
 netifaces==0.11.0
 pyOpenSSL==20.0.1
